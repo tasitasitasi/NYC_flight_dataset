@@ -1,0 +1,290 @@
+---
+title: 'Homework 5: NY Flights - Relational Data'
+author: "Tasianna Giordano"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Homework 5: NY Flights - Relational Data
+
+## Overview & Data sets:
+
+In this assignment you will demonstrate your knowledge of processing relational data, dates, and times on a real-world dataset using R.
+
+-   **`nycflights13`** **:** This data frame contains all flights that departed from New York City in 2013.
+
+#### **Textbook Chapters & Topics**
+
+-   **Ch. 19:** Joins (Using Relational Data)
+
+-   **Ch. 17:** Dates and Times
+
+Reading these chapters and completing the tutorials for them will provide you with everything you need to know to successfully complete the assignment.
+
+*Please keep in mind the steps that require reproducing from the textbook are from the older version of the textbook so please follow the links in the homework and note that the chapter numbers referenced below will be different but the topics are the same.*
+
+------------------------------------------------------------------------
+
+> #### **Code & Submission Requirements**
+>
+> -   You must include comments which describe why/how your code works.
+> -   You must ensure that your code can run and produce the expected output before submission. Your code and output are your solutions. If your code does not run, then you have not provided a solution.
+> -   Your submission must use the HW template and have code within the code chunks provided. [**Do not change the template.**]{.underline}
+>     -   If you'd like you may separate your code for an exercise into multiple chunks. Make sure to include the chunk label for that exercise i.e. **`{r HW5-1}`**
+> -   You must submit (via Canvas):
+>     -   Your Rmd file with your solutions. Name the file with the format of ***"yourLASTNAME_HW5.Rmd"***
+>
+>         [(Make sure to add your name in the YAML header and to hit run all before saving and submitting).]{.underline}
+
+------------------------------------------------------------------------
+
+## Part 1: Relational Data
+
+For this part of homework you will reproduce the steps in **Sec 13.1 – 13.5 found here [Relational Data Prep](https://r4ds.had.co.nz/relational-data.html#introduction-7)**, keeping in mind the diagram below:
+
+![](https://cam-portfolio-blog.netlify.app/hw5-example.png){width="456"}
+
+Perform all steps in the code block below and name the final dataset `flights_relational_prep`.
+
+```{r}
+
+library(tidyverse)
+library(nycflights13)
+
+planes %>% 
+  count(tailnum) %>% 
+  filter(n > 1)
+
+weather %>% 
+  count(year, month, day, hour, origin) %>% 
+  filter(n > 1)
+
+flights_relational_prep <- flights|>
+  left_join(weather, by = 
+          join_by("year", "month", "day", "hour", "origin", "time_hour")) |>
+  left_join(planes, by = "tailnum") %>%
+  left_join(airports, by = c("dest" = "faa")) %>%
+  left_join(airports, by = c("origin" = "faa"))
+flights_relational_prep
+
+
+
+
+
+
+```
+
+### Question 1
+
+Compute the average delay by destination, then join on the airports data frame so you can show the spatial distribution of delays.
+
+Here’s an easy way to draw a map of the United States:
+
+![](https://cam-portfolio-blog.netlify.app/hw5-dist.png){width="456"}
+
+You might want to use the `size` or `color` of the points to display the average delay for each airport.
+1
+```{r HW5-1}
+
+avg_delay_by_dest <- flights_relational_prep %>%
+  group_by(dest) %>%
+  summarize(avg_delay = mean(arr_delay, na.rm = TRUE)) %>%
+  ungroup()
+# i used group by to group the data frame by dest and then puped it to the summarize function to get the mean of the average delay. I assigned all of the functions i did to a variable avg_delay_by_dest, so i can use it in my following computations 
+
+avg_delay_with_airports <- avg_delay_by_dest %>%
+  left_join(airports, by = c("dest" = "faa"))
+# Then i used the previous data manipulations with avg_delay_by_dest and assigned it to avg_delay_with_airports to use later on with my map. I used left join to select all the records from the first dataframe to select only matching records from what i specified (dest) 
+
+avg_delay_with_airports %>%
+  filter(!is.na(lon) & !is.na(lat)) %>%  # Ensure no missing spatial data
+  ggplot(aes(lon, lat)) +
+  borders("state") +
+  geom_point(aes(color = avg_delay), size = 2) +
+  scale_color_viridis_c(option = "plasma", na.value = "grey50") +
+  coord_quickmap() +
+  labs(
+    title = "The Spatial Distribution of Average Delays by Destination",
+    color = "Avg Delay (min)"
+  )
+
+# I started by using filter to remove rows where the lat or lon values are NA, this helps with accurate plotting. I had to read on tidyverse filter documentation about this because i kept getting errors, eventually i figured it out and used !is.na() which means that its filtering by not missing values. After that I piped it ggplot and used the code provided above to create the US map. I added scale_color_viridis_c to adjust the color scale for a contionious color progression and selected plasma because i liked the colors. I read about using this on https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html
+```
+
+### Question 2
+
+Is there a **relationship between the age of a plane and its delays**? Write code to (show a plot that) support(s) your conclusions.
+
+```{r HW5-2}
+
+library(tidyverse)
+
+flights_relational_prep %>%
+  filter(!is.na(year.y), !is.na(arr_delay)) %>%
+  mutate(plane_age = year.x - year.y) %>%
+  group_by(plane_age) %>%
+  summarize(avg_delay = mean(arr_delay, na.rm = TRUE)) %>%
+  ggplot(aes(x = plane_age, y = avg_delay)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Relationship Between Plane Age and Average Delay",
+    x = "Plane Age (Years)",
+    y = "Average Arrival Delay (Minutes)"
+  ) +
+  theme_minimal()
+
+# I used filter to remove row that are missing arrival delay or the planes manufacturing year and the piped to mutate to calculate the age of the year. I did that by subtracting the manufacturing year from the flight year, once I did that I piped to group by to group by the calculated plane age, after group_by I used summarize to cimpute the average delay for each plane age group. After finishing the calculations and grouping, i started with ggplot and put plane age on the x axis and avg_delay on the y axis. I added points with geom_point to represent the average delay for each plane age and added geom_smooth for a linear trend line in blue to better visualize the relationship. I added titles and applied theme_minmal for a clean simple look. 
+
+```
+
+**Explain your conclusion and justifications:**
+
+```         
+
+This graph shows a trendline that is sloping downwards which indicates that the average delay goes down as the age of the plane increases. My initial thought is that it's possible that older planes do not have as many routes as newer planes. It's also possible that newer planes are set to high-congestion routes and expierence more traffic because of that. While older planes are set to go to more uncommon destinations, therefore having less delays. 
+```
+
+### Question 3
+
+Filter `flights` to only show flights with planes that have flown at least 100 flights.
+
+```{r HW5-3}
+
+library(tidyverse)
+
+flights %>%
+  group_by(tailnum) %>%
+  filter(n() >= 100) %>%
+  ungroup()
+
+# I started by grouping by tail_num to grab each unique plane and then filtered using the n() function to count the number of flights in each group (plane) then at the end i removed thr grouping structure so it outputs a standard looking tibble 
+
+```
+
+------------------------------------------------------------------------
+
+## Part 2: Dates and Times
+
+Here you will start by reproducing some of the steps in **Sec 16.1 – 16.5 found here [Dates and Times Prep](https://r4ds.had.co.nz/dates-and-times.html#introduction-10)**
+
+Perform all steps in the code block below and name the final dataset `flights_datetime_prep`.
+
+```{r}
+
+library(tidyverse)
+library(lubridate)
+library(nycflights13)
+library(dplyr)
+
+get_timezone <- function(airport) {
+  print("test")
+  print(airport)
+  timezones[[airport]]
+}
+
+make_datetime_100 <- function(year, month, day, time, timezone) {
+  make_datetime(year, month, day, time %/% 100, time %% 100, tz = timezone)
+}
+
+ flights_with_datetime <- flights %>%
+  left_join(select(nycflights13::airports, faa, origintz = tzone), by = c(origin="faa")) %>%
+  left_join(select(nycflights13::airports, faa, desttz = tzone), by = c(dest="faa"))
+
+flights_datetime_prep <- flights_with_datetime |>
+  filter(!is.na(dep_time), !is.na(arr_time), !is.na(origintz), !is.na(desttz)) |>
+  mutate(
+    dep_time = make_datetime_100(year, month, day, dep_time, origintz),
+    arr_time = make_datetime_100(year, month, day, arr_time, desttz),
+    sched_dep_time = make_datetime_100(year, month, day, sched_dep_time, origintz),
+    sched_arr_time = make_datetime_100(year, month, day, sched_arr_time, desttz)
+  ) |>
+  select(origin, dest, ends_with("delay"), ends_with("time"))
+
+flights_datetime_prep
+
+```
+
+### Question 4
+
+Compare `airtime` with the **duration between departure and arrival**. Write code and/or produce plots to explain your findings.
+
+*Hint: consider the location of the airport*
+
+```{r HW5-4}
+
+library(tidyverse)
+library(lubridate)
+
+
+flights_datetime_prep <- flights_datetime_prep %>% 
+  mutate(
+    flight_duration = as.numeric(difftime(arr_time, dep_time, units = "mins")))
+
+
+flights_datetime_prep %>%
+  #group_by(origin) %>%
+  summarize(
+    avg_flight_duration = mean(flight_duration, na.rm = TRUE),
+    avg_air_time = mean(air_time, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = c(avg_flight_duration, avg_air_time), names_to = "metric", values_to = "minutes") %>%
+  ggplot(aes(x = origin, y = minutes, fill = metric)) +
+  geom_bar(stat = "identity", position = "dodge") +  
+  labs(
+    title = "Average Flight Duration and Airtime by Airport",
+    x = "Origin Airport",
+    y = "Minutes",
+    fill = "Metric"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+
+# I started by calculating the duration between departure and arrival by finding the difference between arr_time and dep_time. I used as_numeric to make sure that difftime is a numeric value. I read about this on https://www.rdocumentation.org/packages/base/versions/3.6.2/topics/numeric. Then I started to build a plot. I grouped by origin then summarized for the mean of flight duration and air time. I used pivot longer to combine avg flight duration and avg airtime into one column to comapre these insights to the minutes columns containing the values. Then I had to choose what plot to show this data in. I started with a scatter plot but really felt that the data did not translate well and it was hard to read. I landed on a box plot and within geom_bar made it so that the bars showed side by side. I did different colors for both metrics and situated the legend at the top of the graph. 
+
+
+```
+
+**Explain your conclusion and justifications:**
+
+```         
+
+Avg_air_time represents the actual time the plane is in the air, from take-off to landing, the avg_flight_duration variable represents the total time the plane is being used(groundtime is included, such as taxiing or possibly delays on the ground). With this understood, looking at the graph, avg flight duration is higher then avg_airtime which makes sense when you take into account, possible delay sor taxiing. In flight date_time_prep, ensuring the timezones worked properly was essential to this code. I was able to do a left join with the data in airports to get the time zone information for each dest and orgin, therefore making the actual air time correct. 
+```
+
+### Question 5
+
+On what day of the week should you leave if you want to **minimize the chance of a delay**? Write code and/or produce plots to explain your findings.
+
+```{r HW5-5}
+
+library(tidyverse)
+
+# Calculate average delay by day of the week using lubrudate to get the day of the week from the dep_tme, then within mutate i set label +TRUE to convert the day to a factor with "Mon", "Tues" etc. I piped that to group_by and summarize to calculate the average dep delay. After doing that I piped it to ggplot with the x axis set to weekday and the y axis the avg delay. I set the titles and applied a minimal theme. I also removed the legend as I felt it was a bit redundant since each weekday is already labeled. 
+flights_datetime_prep %>%
+  mutate(weekday = wday(dep_time, label = TRUE)) %>%  
+  group_by(weekday) %>%
+  summarize(avg_delay = mean(dep_delay, na.rm = TRUE)) %>%  
+  ggplot(aes(x = weekday, y = avg_delay, fill = weekday)) +
+  geom_bar(stat = "identity") +  
+  labs(
+    title = "Average Departure Delay by Day of the Week",
+    x = "Day of the Week",
+    y = "Average Departure Delay (minutes)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")  
+
+
+```
+
+**Explain your conclusion and justifications:**
+
+```         
+
+My conclusion is the best day of the week to fly is Saturday, as it has the lowest average departure delay. One reason this could be the case could be that Saturday has a lower amount of flights in general, specifically business flights would not typically be taking off on Saturday. With less planes schduled to take off, this could lead to less congestion on the runways, leading to less delays. 
+```
